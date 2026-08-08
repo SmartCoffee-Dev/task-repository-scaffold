@@ -20,6 +20,102 @@ erDiagram
     tasks ||--o{ session_logs : registra
 ```
 
+## Referencia física de las tablas
+
+SQLite conserva los valores según afinidad de tipo. En este esquema, los identificadores y relaciones usan `INTEGER`; el contenido Markdown, JSON y las marcas de tiempo usan `TEXT`. `INTEGER PRIMARY KEY` es el alias del `rowid` de SQLite: si no se proporciona, SQLite asigna el identificador automáticamente.
+
+### `specs`
+
+Una especificación es el agregado raíz del modelo. El borrado de una spec elimina en cascada sus tareas y, por extensión, las dependencias y bitácoras de esas tareas.
+
+| Columna | Tipo | Nulo / valor por defecto | Claves y restricciones |
+| --- | --- | --- | --- |
+| `id` | `INTEGER` | No | Clave primaria. |
+| `title` | `TEXT` | No | No puede quedar vacío tras aplicar `trim`. |
+| `slug` | `TEXT` | No | Único. Solo minúsculas, dígitos y guiones; no admite guiones iniciales, finales ni consecutivos. |
+| `description` | `TEXT` | No | Markdown no vacío tras `trim`. |
+| `created_at` | `TEXT` | No; `CURRENT_TIMESTAMP` | Fecha/hora de creación en formato SQLite UTC. |
+| `updated_at` | `TEXT` | No; `CURRENT_TIMESTAMP` | Se actualiza automáticamente al cambiar `title`, `slug` o `description`. |
+
+### `tasks`
+
+Una tarea pertenece a una única spec y puede ser raíz o subtarea. La columna `parent_id` forma una relación recursiva dentro de la misma tabla.
+
+| Columna | Tipo | Nulo / valor por defecto | Claves y restricciones |
+| --- | --- | --- | --- |
+| `id` | `INTEGER` | No | Clave primaria. |
+| `spec_id` | `INTEGER` | No | Clave foránea a `specs.id`; `ON DELETE CASCADE`. No puede modificarse después de crear la tarea. |
+| `title` | `TEXT` | No | No vacío tras `trim`. |
+| `description` | `TEXT` | No | Markdown no vacío tras `trim`. |
+| `status` | `TEXT` | No; `pending` | Solo `blocked`, `pending`, `wip`, `in_review` o `done`. |
+| `parent_id` | `INTEGER` | Sí; `NULL` | Clave foránea a `tasks.id`; `ON DELETE CASCADE`. Debe apuntar a una tarea de la misma spec. |
+| `branch` | `TEXT` | Sí; `NULL` | Si se proporciona, no puede ser una cadena vacía o solo espacios. |
+| `created_at` | `TEXT` | No; `CURRENT_TIMESTAMP` | Fecha/hora de creación. |
+| `updated_at` | `TEXT` | No; `CURRENT_TIMESTAMP` | Se actualiza automáticamente cuando cambia título, descripción, estado, padre o rama. |
+
+Eliminar una tarea elimina sus subtareas, sus dependencias y sus registros de sesión por las reglas de cascada. No existe una relación de tareas entre specs: el trigger rechaza tanto un padre de otra spec como el traslado posterior de `spec_id`.
+
+### `task_dependencies`
+
+Esta tabla no tiene un identificador artificial: la pareja de columnas define la relación y constituye su clave primaria. La fila se lee como: **`task_id` requiere que `required_task_id` esté terminada**.
+
+| Columna | Tipo | Nulo / valor por defecto | Claves y restricciones |
+| --- | --- | --- | --- |
+| `task_id` | `INTEGER` | No | Parte 1 de la clave primaria compuesta; clave foránea a `tasks.id`, `ON DELETE CASCADE`. |
+| `required_task_id` | `INTEGER` | No | Parte 2 de la clave primaria compuesta; clave foránea a `tasks.id`, `ON DELETE CASCADE`. |
+
+Además de las claves foráneas, un `CHECK` impide que ambas columnas sean iguales. La clave primaria compuesta rechaza duplicados; los triggers impiden dependencias entre specs y ciclos directos o transitivos en el grafo.
+
+### `session_logs`
+
+La bitácora registra el cierre de una sesión sobre una tarea. Una misma sesión puede registrar trabajo en tareas distintas, pero no puede tener dos filas para la misma tarea.
+
+| Columna | Tipo | Nulo / valor por defecto | Claves y restricciones |
+| --- | --- | --- | --- |
+| `id` | `INTEGER` | No | Clave primaria. |
+| `task_id` | `INTEGER` | No | Clave foránea a `tasks.id`; `ON DELETE CASCADE`. |
+| `session_id` | `TEXT` | No | No vacío tras `trim`; único en combinación con `task_id`. |
+| `overview` | `TEXT` | No | Resumen Markdown no vacío tras `trim`. |
+| `taken_decisions` | `TEXT` | No; `[]` | JSON válido cuyo valor raíz es un arreglo. |
+| `files_changed` | `TEXT` | No; `[]` | JSON válido cuyo valor raíz es un arreglo. |
+| `created_at` | `TEXT` | No; `CURRENT_TIMESTAMP` | Momento de cierre del registro. |
+
+La restricción única es `UNIQUE (task_id, session_id)`. Al borrar una tarea, sus logs se eliminan en cascada.
+
+### Contrato de columnas JSON
+
+Los `CHECK` garantizan que ambas columnas sean arreglos JSON y los triggers validan cada elemento al insertar o modificar la fila.
+
+| Columna | Forma de cada elemento | Reglas adicionales |
+| --- | --- | --- |
+| `taken_decisions` | `{ "decision": string, "gap": string, "justify": string }` | Los tres textos son obligatorios y no vacíos tras `trim`. |
+| `files_changed` | `{ "type": string, "file": string, "reason": string }` | `type` solo admite `creation`, `modification` o `deletion` (sin distinguir mayúsculas); `file` y `reason` no pueden estar vacíos. |
+
+Los arreglos vacíos son válidos. El esquema permite propiedades JSON adicionales, pues no alteran el contrato mínimo exigido.
+
+## Índices
+
+| Índice | Columnas | Uso previsto |
+| --- | --- | --- |
+| `tasks_by_spec_and_status` | `tasks(spec_id, status)` | Listar el trabajo de una spec por estado. |
+| `tasks_by_parent` | `tasks(parent_id)` | Recuperar subtareas de una actividad. |
+| `task_dependencies_by_required_task` | `task_dependencies(required_task_id)` | Encontrar tareas que quedan afectadas por un prerrequisito. |
+| `session_logs_by_task_and_created_at` | `session_logs(task_id, created_at)` | Consultar la bitácora cronológica de una tarea. |
+
+Los `UNIQUE` de `specs.slug`, `session_logs(task_id, session_id)` y la clave primaria compuesta de `task_dependencies` también generan índices únicos internos.
+
+## Reglas aplicadas por triggers
+
+| Área | Regla |
+| --- | --- |
+| Marcas de tiempo | Al actualizar los campos editables de `specs` o `tasks`, se refresca `updated_at`. |
+| Árbol de tareas | Un padre debe estar en la misma spec; no puede ser la propia tarea ni producir un ciclo. |
+| Pertenencia | `tasks.spec_id` es inmutable después de crear la tarea. |
+| Grafo de dependencias | Ambas tareas deben estar en la misma spec y el nuevo enlace no puede crear un ciclo. |
+| Avance de estado | Una tarea con dependencias no terminadas no puede pasar a `wip`, `in_review` ni `done`. |
+| Dependencias tardías | No puede añadirse una dependencia sin terminar a una tarea que ya está en `wip`, `in_review` o `done`. |
+| Bitácora | Los elementos de los dos arreglos JSON deben respetar su contrato mínimo. |
+
 ## Especificaciones y tareas
 
 Una fila de `specs` contiene el título, el `slug` y una descripción Markdown. Semánticamente, esa descripción debe exponer el objetivo, impacto, alcance incluido y excluido, criterios de aceptación, RBAC, ADRs y archivos relevantes. La base conserva el Markdown como fuente de contexto; no intenta interpretar su sintaxis.
