@@ -433,6 +433,16 @@ def needs_incorporation(spec_id: int) -> bool:
 
 The agent must execute these steps in strict order. At each decision point, respond to the user with the required action or question before proceeding.
 
+### Constraint: Impact and Acceptance sections are gated
+
+The `# Impact` and `# Acceptance` sections of a spec revision **must never be populated directly from a `--description`**. These sections can only receive content through the pipeline:
+
+```
+description → definition_item (type=impact or example) → dashboard → accepted → incorporated → spec revision
+```
+
+In contrast, `Goal`, `Scope`, `RBAC`, `ADR`, and `Relevant Files` may be populated directly from the `--description` during analysis, though ambiguities in these sections should also generate `clarification` or `tension` items.
+
 ---
 
 ### Step 1 — Verify spec existence
@@ -511,8 +521,8 @@ if has_unincorporated(spec_id):
 
 3. Build a new revision content by merging the accepted decisions into `current_content`, following the [spec content template](./docs/spec-content-template.md). Update the relevant sections based on each accepted item's type:
    - `clarification` → update the section the question pertains to with the answer
-   - `impact` → update the `# Impact` section
-   - `example` → update the `# Acceptance` section with the new case
+   - `impact` → update the `# Impact` section (this is the **only** way `# Impact` receives new entries)
+   - `example` → update the `# Acceptance` section (this is the **only** way `# Acceptance` receives new entries)
    - `tension` → resolve the tension in the relevant section
 
 4. Create the new revision:
@@ -558,10 +568,10 @@ The agent must examine the `description` and the current spec content against th
 | Section | Check |
 |---------|-------|
 | **Goal** | Does the description introduce a goal that contradicts or significantly expands the current goal? |
-| **Impact** | Are there new side effects mentioned in the description not captured in the spec? Are there impacts in the spec contradicted by the new description? |
+| **Impact** | Are there new side effects mentioned in the description not captured in the spec? **Any new impact must become a `definition_item` of type `impact`** — never write directly to this section. Are there impacts in the spec contradicted by the new description? |
 | **Scope / Included** | Does the description add scope items not listed? Are existing scope items incompatible with the description? |
 | **Scope / Excluded** | Should anything in the description be explicitly excluded instead? |
-| **Acceptance** | Does the description suggest new acceptance criteria? Are existing criteria invalidated? |
+| **Acceptance** | Does the description suggest new acceptance criteria? **Any new criteria must become a `definition_item` of type `example`** — never write directly to this section. Are existing criteria invalidated? |
 | **RBAC / Authorized** | Are new actors mentioned? Do existing actor definitions conflict? |
 | **RBAC / Unauthorized** | Should any actors be explicitly excluded based on the description? |
 | **ADR** | Does the description prescribe or imply technical decisions not yet captured? |
@@ -638,6 +648,8 @@ After analysis, report to the user:
    ```markdown
    <!-- PENDING: Awaiting resolution of definition item #N -->
    ```
+
+   **Gating rule for `# Impact` and `# Acceptance`:** These two sections must **only** contain entries that came through the `definition_item → accepted → incorporated` pipeline (Step 3). Do **not** copy impact or acceptance content directly from the `--description` into these sections. Instead, any new impact or acceptance criteria detected in the description must have been emitted as `definition_items` in Step 4.3. The sections that **may** be populated directly from the description are: `Goal`, `Scope`, `RBAC`, `ADR`, and `Relevant Files`.
 
 3. Create the new revision:
    ```

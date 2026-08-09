@@ -10,6 +10,8 @@ A concise summary of the objective, taking into account everything described wit
 
 ### Impact
 
+> **Important:** This section is populated exclusively through `impact`-type `definition_items` that have been accepted and incorporated. The agent must never write directly to this section from a `description` — new impacts must go through the `definition_item → accepted → incorporated` pipeline.
+
 A list of collateral effects the implementation will have on the current state of the project. Each item should describe:
 - What changes (behavior, API, data model, performance, dependencies)
 - Who or what is affected (users, other systems, downstream consumers)
@@ -26,6 +28,8 @@ An explicit list of what is in scope for this implementation. Use concrete, veri
 An explicit list of what is **not** in scope. The purpose is to bound potential scope creep. Items here should be natural extensions or adjacent concerns that a reader might reasonably assume are included.
 
 ### Acceptance
+
+> **Important:** This section is populated exclusively through `example`-type `definition_items` that have been accepted and incorporated. The agent must never write directly to this section from a `description` — new acceptance criteria must go through the `definition_item → accepted → incorporated` pipeline.
 
 A list of foreseeable cases that must be satisfied for the implementation to be considered accepted. Each case should be testable and phrased as a concrete scenario with expected behavior. Include:
 - Happy-path scenarios
