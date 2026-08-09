@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib.util
 import json
 from pathlib import Path
 import sqlite3
@@ -12,6 +13,12 @@ import unittest
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = REPOSITORY_ROOT / "scripts" / "scaffold_db.py"
 DATABASE_FILENAME = "feature_workflow.sqlite3"
+
+SCRIPT_MODULE_SPEC = importlib.util.spec_from_file_location("scaffold_db", SCRIPT)
+assert SCRIPT_MODULE_SPEC is not None
+assert SCRIPT_MODULE_SPEC.loader is not None
+scaffold_db = importlib.util.module_from_spec(SCRIPT_MODULE_SPEC)
+SCRIPT_MODULE_SPEC.loader.exec_module(scaffold_db)
 
 
 class ScaffoldDatabaseTests(unittest.TestCase):
@@ -65,6 +72,73 @@ class ScaffoldDatabaseTests(unittest.TestCase):
         )
         return int(cursor.lastrowid)
 
+    @staticmethod
+    def add_revision(
+        connection: sqlite3.Connection,
+        spec_id: int,
+        revision_number: int,
+        content: str | None = None,
+    ) -> int:
+        cursor = connection.execute(
+            """
+            INSERT INTO spec_revisions (spec_id, revision_number, content)
+            VALUES (?, ?, ?)
+            """,
+            (spec_id, revision_number, content or f"# Feature revision {revision_number}"),
+        )
+        return int(cursor.lastrowid)
+
+    @staticmethod
+    def add_definition_item(
+        connection: sqlite3.Connection,
+        spec_id: int,
+        *,
+        item_type: str = "clarification",
+        source: str = "description",
+        fingerprint: str = "budget-missing-behavior",
+        question: str | None = "What should happen when the budget does not exist?",
+        example_type: str | None = None,
+        status: str = "pending",
+    ) -> int:
+        cursor = connection.execute(
+            """
+            INSERT INTO definition_items (
+                spec_id, type, source, title, description, question,
+                suggested_resolution, example_type, fingerprint, status
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                spec_id,
+                item_type,
+                source,
+                "Budget behavior needs a decision",
+                "The request does not state how a missing budget is handled.",
+                question,
+                "Create the budget automatically.",
+                example_type,
+                fingerprint,
+                status,
+            ),
+        )
+        return int(cursor.lastrowid)
+
+    @staticmethod
+    def add_definition_response(
+        connection: sqlite3.Connection,
+        definition_item_id: int,
+        response_type: str,
+        content: str = "The user confirmed this behavior.",
+    ) -> int:
+        cursor = connection.execute(
+            """
+            INSERT INTO definition_responses (definition_item_id, response_type, content)
+            VALUES (?, ?, ?)
+            """,
+            (definition_item_id, response_type, content),
+        )
+        return int(cursor.lastrowid)
+
     def test_command_creates_expected_schema_and_keys(self) -> None:
         self.assertTrue(self.database_path.is_file())
         with self.connect() as connection:
@@ -75,8 +149,43 @@ class ScaffoldDatabaseTests(unittest.TestCase):
                 )
             }
             self.assertTrue(
-                {"specs", "tasks", "task_dependencies", "session_logs"}.issubset(tables)
+                {
+                    "specs",
+                    "spec_revisions",
+                    "definition_items",
+                    "definition_responses",
+                    "tasks",
+                    "task_dependencies",
+                    "session_logs",
+                }.issubset(tables)
             )
+
+            spec_columns = {
+                row[1]: row for row in connection.execute("PRAGMA table_info(specs)")
+            }
+            self.assertEqual(spec_columns["current_revision_id"][2], "INTEGER")
+
+            revision_columns = {
+                row[1]: row for row in connection.execute("PRAGMA table_info(spec_revisions)")
+            }
+            self.assertEqual(revision_columns["revision_number"][2], "INTEGER")
+            self.assertEqual(revision_columns["content"][2], "TEXT")
+
+            definition_item_columns = {
+                row[1]: row for row in connection.execute("PRAGMA table_info(definition_items)")
+            }
+            self.assertEqual(definition_item_columns["example_type"][2], "TEXT")
+            self.assertEqual(definition_item_columns["fingerprint"][2], "TEXT")
+            self.assertEqual(
+                definition_item_columns["incorporated_in_revision_id"][2], "INTEGER"
+            )
+            self.assertEqual(definition_item_columns["accepted_revision_number"][2], "INTEGER")
+
+            response_columns = {
+                row[1]: row
+                for row in connection.execute("PRAGMA table_info(definition_responses)")
+            }
+            self.assertEqual(response_columns["response_type"][2], "TEXT")
 
             task_columns = {
                 row[1]: row for row in connection.execute("PRAGMA table_info(tasks)")
@@ -143,6 +252,9 @@ class ScaffoldDatabaseTests(unittest.TestCase):
             }
             self.assertTrue(
                 {
+                    "spec_revisions_require_sequential_numbers",
+                    "spec_revisions_are_immutable",
+                    "definition_items_validate_status_transition",
                     "tasks_validate_parent_before_insert",
                     "tasks_require_completed_dependencies",
                     "task_dependencies_validate_before_insert",
@@ -210,6 +322,249 @@ class ScaffoldDatabaseTests(unittest.TestCase):
                     "INSERT INTO task_dependencies (task_id, required_task_id) VALUES (?, ?)",
                     (third, first),
                 )
+
+    def test_spec_revisions_are_sequential_immutable_and_keep_current_revision(self) -> None:
+        with self.connect() as connection:
+            first_spec = self.add_spec(connection, "feature-alpha")
+            second_spec = self.add_spec(connection, "feature-beta")
+
+            first_revision = self.add_revision(connection, first_spec, 1, "# First revision")
+            self.assertEqual(
+                connection.execute(
+                    "SELECT current_revision_id FROM specs WHERE id = ?", (first_spec,)
+                ).fetchone()[0],
+                first_revision,
+            )
+            with self.assertRaisesRegex(sqlite3.IntegrityError, "sequential"):
+                self.add_revision(connection, first_spec, 3)
+            with self.assertRaisesRegex(sqlite3.IntegrityError, "immutable"):
+                connection.execute(
+                    "UPDATE spec_revisions SET content = ? WHERE id = ?",
+                    ("# Mutated revision", first_revision),
+                )
+
+            second_revision = self.add_revision(connection, first_spec, 2, "# Second revision")
+            self.assertEqual(
+                connection.execute(
+                    "SELECT current_revision_id FROM specs WHERE id = ?", (first_spec,)
+                ).fetchone()[0],
+                second_revision,
+            )
+            with self.assertRaisesRegex(sqlite3.IntegrityError, "latest"):
+                connection.execute(
+                    "UPDATE specs SET current_revision_id = ? WHERE id = ?",
+                    (first_revision, first_spec),
+                )
+
+            other_revision = self.add_revision(connection, second_spec, 1)
+            with self.assertRaisesRegex(sqlite3.IntegrityError, "belong"):
+                connection.execute(
+                    "UPDATE specs SET current_revision_id = ? WHERE id = ?",
+                    (other_revision, first_spec),
+                )
+
+    def test_definition_items_keep_response_history_and_enforce_transitions(self) -> None:
+        with self.connect() as connection:
+            spec_id = self.add_spec(connection)
+            initial_revision = self.add_revision(connection, spec_id, 1, "# Initial definition")
+            item_id = self.add_definition_item(connection, spec_id)
+            self.assertEqual(
+                connection.execute(
+                    "SELECT status FROM definition_items WHERE id = ?", (item_id,)
+                ).fetchone()[0],
+                "pending",
+            )
+            with self.assertRaisesRegex(sqlite3.IntegrityError, "answer or acceptance"):
+                connection.execute(
+                    "UPDATE definition_items SET status = 'accepted' WHERE id = ?", (item_id,)
+                )
+
+            self.add_definition_response(
+                connection,
+                item_id,
+                "answer",
+                "Do not create a missing budget automatically.",
+            )
+            self.add_definition_response(
+                connection,
+                item_id,
+                "observation",
+                "This preserves the current approval workflow.",
+            )
+            connection.execute(
+                "UPDATE definition_items SET status = 'accepted' WHERE id = ?", (item_id,)
+            )
+            self.assertEqual(
+                connection.execute(
+                    "SELECT accepted_revision_number FROM definition_items WHERE id = ?", (item_id,)
+                ).fetchone()[0],
+                1,
+            )
+            self.assertEqual(
+                connection.execute(
+                    "SELECT COUNT(*) FROM definition_responses WHERE definition_item_id = ?",
+                    (item_id,),
+                ).fetchone()[0],
+                2,
+            )
+
+            with self.assertRaises(sqlite3.IntegrityError):
+                connection.execute(
+                    "UPDATE definition_items SET status = 'incorporated' WHERE id = ?", (item_id,)
+                )
+
+            other_spec = self.add_spec(connection, "feature-beta")
+            other_revision = self.add_revision(connection, other_spec, 1)
+            with self.assertRaisesRegex(sqlite3.IntegrityError, "current revision"):
+                connection.execute(
+                    """
+                    UPDATE definition_items
+                    SET status = 'incorporated', incorporated_in_revision_id = ?
+                    WHERE id = ?
+                    """,
+                    (other_revision, item_id),
+                )
+            with self.assertRaisesRegex(sqlite3.IntegrityError, "current revision"):
+                connection.execute(
+                    """
+                    UPDATE definition_items
+                    SET status = 'incorporated', incorporated_in_revision_id = ?
+                    WHERE id = ?
+                    """,
+                    (initial_revision, item_id),
+                )
+
+            incorporated_revision = self.add_revision(connection, spec_id, 2, "# Revised definition")
+            connection.execute(
+                """
+                UPDATE definition_items
+                SET status = 'incorporated', incorporated_in_revision_id = ?
+                WHERE id = ?
+                """,
+                (incorporated_revision, item_id),
+            )
+            self.assertEqual(
+                connection.execute(
+                    "SELECT incorporated_in_revision_id FROM definition_items WHERE id = ?", (item_id,)
+                ).fetchone()[0],
+                incorporated_revision,
+            )
+            with self.assertRaisesRegex(sqlite3.IntegrityError, "Invalid definition item"):
+                connection.execute(
+                    "UPDATE definition_items SET status = 'pending' WHERE id = ?", (item_id,)
+                )
+            with self.assertRaisesRegex(sqlite3.IntegrityError, "incorporated"):
+                self.add_definition_response(connection, item_id, "observation")
+
+            rejected_id = self.add_definition_item(
+                connection,
+                spec_id,
+                fingerprint="budget-permission-impact",
+                item_type="impact",
+                question=None,
+            )
+            with self.assertRaisesRegex(sqlite3.IntegrityError, "rejection response"):
+                connection.execute(
+                    "UPDATE definition_items SET status = 'rejected' WHERE id = ?", (rejected_id,)
+                )
+            self.add_definition_response(connection, rejected_id, "reject", "Not applicable.")
+            connection.execute(
+                "UPDATE definition_items SET status = 'rejected' WHERE id = ?", (rejected_id,)
+            )
+
+    def test_definition_item_contract_and_open_fingerprint_deduplication(self) -> None:
+        with self.connect() as connection:
+            spec_id = self.add_spec(connection)
+            with self.assertRaises(sqlite3.IntegrityError):
+                self.add_definition_item(connection, spec_id, item_type="unknown")
+            with self.assertRaises(sqlite3.IntegrityError):
+                self.add_definition_item(connection, spec_id, source="commit")
+            with self.assertRaises(sqlite3.IntegrityError):
+                self.add_definition_item(
+                    connection,
+                    spec_id,
+                    item_type="example",
+                    question=None,
+                    example_type=None,
+                )
+            with self.assertRaises(sqlite3.IntegrityError):
+                self.add_definition_item(connection, spec_id, question=None)
+
+            item_id = self.add_definition_item(
+                connection,
+                spec_id,
+                item_type="example",
+                question=None,
+                example_type="edge-case",
+                fingerprint="missing-budget-edge-case",
+            )
+            with self.assertRaisesRegex(sqlite3.IntegrityError, "definition_items.spec_id"):
+                self.add_definition_item(
+                    connection,
+                    spec_id,
+                    item_type="example",
+                    question=None,
+                    example_type="edge-case",
+                    fingerprint="missing-budget-edge-case",
+                )
+
+            self.add_definition_response(connection, item_id, "accept", "")
+            connection.execute(
+                "UPDATE definition_items SET status = 'accepted' WHERE id = ?", (item_id,)
+            )
+            incorporated_revision = self.add_revision(connection, spec_id, 1)
+            connection.execute(
+                """
+                UPDATE definition_items
+                SET status = 'incorporated', incorporated_in_revision_id = ?
+                WHERE id = ?
+                """,
+                (incorporated_revision, item_id),
+            )
+            replacement_id = self.add_definition_item(
+                connection,
+                spec_id,
+                item_type="example",
+                question=None,
+                example_type="edge-case",
+                fingerprint="missing-budget-edge-case",
+            )
+            self.assertIsInstance(replacement_id, int)
+
+    def test_is_spec_defined_is_derived_from_pending_definition_items(self) -> None:
+        with self.connect() as connection:
+            spec_id = self.add_spec(connection)
+            self.assertTrue(scaffold_db.is_spec_defined(connection, spec_id))
+            self.assertEqual(
+                connection.execute(
+                    "SELECT definition_status FROM spec_definition_states WHERE spec_id = ?", (spec_id,)
+                ).fetchone()[0],
+                "defined",
+            )
+
+            item_id = self.add_definition_item(connection, spec_id)
+            self.assertFalse(scaffold_db.is_spec_defined(connection, spec_id))
+            self.add_definition_response(connection, item_id, "answer")
+            connection.execute(
+                "UPDATE definition_items SET status = 'accepted' WHERE id = ?", (item_id,)
+            )
+            self.assertTrue(scaffold_db.is_spec_defined(connection, spec_id))
+
+            new_item_id = self.add_definition_item(
+                connection,
+                spec_id,
+                fingerprint="budget-permission-impact",
+                item_type="impact",
+                question=None,
+            )
+            self.assertFalse(scaffold_db.is_spec_defined(connection, spec_id))
+            self.add_definition_response(connection, new_item_id, "reject", "Not applicable.")
+            connection.execute(
+                "UPDATE definition_items SET status = 'rejected' WHERE id = ?", (new_item_id,)
+            )
+            self.assertTrue(scaffold_db.is_spec_defined(connection, spec_id))
+            with self.assertRaisesRegex(ValueError, "Unknown spec"):
+                scaffold_db.is_spec_defined(connection, 9999)
 
     def test_status_and_foreign_key_constraints(self) -> None:
         with self.connect() as connection:

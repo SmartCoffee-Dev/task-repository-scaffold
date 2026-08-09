@@ -27,9 +27,98 @@ CREATE TABLE specs (
         AND slug NOT LIKE '%--%'
     ),
     description TEXT NOT NULL CHECK (length(trim(description)) > 0),
+    current_revision_id INTEGER,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (current_revision_id) REFERENCES spec_revisions(id) ON DELETE RESTRICT
 );
+
+CREATE TABLE spec_revisions (
+    id INTEGER PRIMARY KEY,
+    spec_id INTEGER NOT NULL,
+    revision_number INTEGER NOT NULL CHECK (revision_number > 0),
+    content TEXT NOT NULL CHECK (length(trim(content)) > 0),
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (spec_id, revision_number),
+    FOREIGN KEY (spec_id) REFERENCES specs(id) ON DELETE CASCADE
+);
+
+CREATE INDEX spec_revisions_by_spec_and_created_at
+ON spec_revisions(spec_id, created_at);
+
+CREATE TABLE definition_items (
+    id INTEGER PRIMARY KEY,
+    spec_id INTEGER NOT NULL,
+    type TEXT NOT NULL CHECK (type IN ('clarification', 'tension', 'impact', 'example')),
+    source TEXT NOT NULL CHECK (source IN ('description', 'spec', 'base_branch')),
+    title TEXT NOT NULL CHECK (length(trim(title)) > 0),
+    description TEXT NOT NULL CHECK (length(trim(description)) > 0),
+    question TEXT,
+    suggested_resolution TEXT,
+    example_type TEXT CHECK (example_type IN ('happy-path', 'edge-case')),
+    fingerprint TEXT NOT NULL CHECK (length(trim(fingerprint)) > 0),
+    status TEXT NOT NULL DEFAULT 'pending' CHECK (
+        status IN ('pending', 'accepted', 'rejected', 'incorporated')
+    ),
+    accepted_revision_number INTEGER NOT NULL DEFAULT 0 CHECK (accepted_revision_number >= 0),
+    incorporated_in_revision_id INTEGER,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CHECK (
+        (type = 'example' AND example_type IS NOT NULL)
+        OR (type <> 'example' AND example_type IS NULL)
+    ),
+    CHECK (
+        type <> 'clarification'
+        OR (question IS NOT NULL AND length(trim(question)) > 0)
+    ),
+    CHECK (
+        (status = 'incorporated' AND incorporated_in_revision_id IS NOT NULL)
+        OR (status <> 'incorporated' AND incorporated_in_revision_id IS NULL)
+    ),
+    FOREIGN KEY (spec_id) REFERENCES specs(id) ON DELETE CASCADE,
+    FOREIGN KEY (incorporated_in_revision_id) REFERENCES spec_revisions(id) ON DELETE RESTRICT
+);
+
+CREATE INDEX definition_items_by_spec_and_status
+ON definition_items(spec_id, status);
+
+CREATE INDEX definition_items_by_spec_and_type
+ON definition_items(spec_id, type);
+
+CREATE UNIQUE INDEX definition_items_unique_open_fingerprint
+ON definition_items(spec_id, fingerprint)
+WHERE status IN ('pending', 'accepted');
+
+CREATE TABLE definition_responses (
+    id INTEGER PRIMARY KEY,
+    definition_item_id INTEGER NOT NULL,
+    response_type TEXT NOT NULL CHECK (
+        response_type IN ('answer', 'accept', 'reject', 'observation')
+    ),
+    content TEXT NOT NULL DEFAULT '' CHECK (
+        response_type IN ('accept', 'reject') OR length(trim(content)) > 0
+    ),
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (definition_item_id) REFERENCES definition_items(id) ON DELETE CASCADE
+);
+
+CREATE INDEX definition_responses_by_item_and_created_at
+ON definition_responses(definition_item_id, created_at);
+
+CREATE VIEW spec_definition_states AS
+SELECT
+    specs.id AS spec_id,
+    CASE
+        WHEN EXISTS (
+            SELECT 1
+            FROM definition_items
+            WHERE definition_items.spec_id = specs.id
+              AND definition_items.status = 'pending'
+        ) THEN 'draft'
+        ELSE 'defined'
+    END AS definition_status
+FROM specs;
 
 CREATE TABLE tasks (
     id INTEGER PRIMARY KEY,
@@ -82,10 +171,194 @@ CREATE TABLE session_logs (
 CREATE INDEX session_logs_by_task_and_created_at ON session_logs(task_id, created_at);
 
 CREATE TRIGGER specs_touch_updated_at
-AFTER UPDATE OF title, slug, description ON specs
+AFTER UPDATE OF title, slug, description, current_revision_id ON specs
 FOR EACH ROW
 BEGIN
     UPDATE specs SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
+END;
+
+CREATE TRIGGER spec_revisions_require_sequential_numbers
+BEFORE INSERT ON spec_revisions
+FOR EACH ROW
+WHEN NEW.revision_number <> COALESCE(
+    (SELECT MAX(revision_number) + 1 FROM spec_revisions WHERE spec_id = NEW.spec_id),
+    1
+)
+BEGIN
+    SELECT RAISE(ABORT, 'Spec revision numbers must be sequential within a spec');
+END;
+
+CREATE TRIGGER spec_revisions_are_immutable
+BEFORE UPDATE ON spec_revisions
+FOR EACH ROW
+BEGIN
+    SELECT RAISE(ABORT, 'Spec revisions are immutable');
+END;
+
+CREATE TRIGGER spec_revisions_become_current
+AFTER INSERT ON spec_revisions
+FOR EACH ROW
+BEGIN
+    UPDATE specs SET current_revision_id = NEW.id WHERE id = NEW.spec_id;
+END;
+
+CREATE TRIGGER specs_validate_current_revision_before_update
+BEFORE UPDATE OF current_revision_id ON specs
+FOR EACH ROW
+WHEN NEW.current_revision_id IS NOT NULL
+BEGIN
+    SELECT CASE
+        WHEN NOT EXISTS (
+            SELECT 1
+            FROM spec_revisions
+            WHERE id = NEW.current_revision_id
+              AND spec_id = NEW.id
+        )
+        THEN RAISE(ABORT, 'A current revision must belong to its spec')
+    END;
+
+    SELECT CASE
+        WHEN EXISTS (
+            SELECT 1
+            FROM spec_revisions AS candidate
+            JOIN spec_revisions AS current ON current.id = NEW.current_revision_id
+            WHERE candidate.spec_id = NEW.id
+              AND candidate.revision_number > current.revision_number
+        )
+        THEN RAISE(ABORT, 'A current revision must be the latest revision')
+    END;
+END;
+
+CREATE TRIGGER specs_prevent_clearing_current_revision
+BEFORE UPDATE OF current_revision_id ON specs
+FOR EACH ROW
+WHEN NEW.current_revision_id IS NULL
+     AND EXISTS (SELECT 1 FROM spec_revisions WHERE spec_id = NEW.id)
+BEGIN
+    SELECT RAISE(ABORT, 'A spec with revisions must have a current revision');
+END;
+
+CREATE TRIGGER definition_items_start_pending
+BEFORE INSERT ON definition_items
+FOR EACH ROW
+WHEN NEW.status <> 'pending'
+BEGIN
+    SELECT RAISE(ABORT, 'Definition items must start pending');
+END;
+
+CREATE TRIGGER definition_items_validate_status_transition
+BEFORE UPDATE OF status ON definition_items
+FOR EACH ROW
+WHEN NEW.status <> OLD.status
+BEGIN
+    SELECT CASE
+        WHEN NOT (
+            (OLD.status = 'pending' AND NEW.status IN ('accepted', 'rejected'))
+            OR (OLD.status = 'accepted' AND NEW.status IN ('rejected', 'incorporated'))
+            OR (OLD.status = 'rejected' AND NEW.status = 'accepted')
+        )
+        THEN RAISE(ABORT, 'Invalid definition item status transition')
+    END;
+
+    SELECT CASE
+        WHEN NEW.status = 'accepted' AND NOT EXISTS (
+            SELECT 1
+            FROM definition_responses
+            WHERE definition_item_id = NEW.id
+              AND response_type IN ('answer', 'accept')
+        )
+        THEN RAISE(ABORT, 'An accepted definition item needs an answer or acceptance')
+    END;
+
+    SELECT CASE
+        WHEN NEW.status = 'rejected' AND NOT EXISTS (
+            SELECT 1
+            FROM definition_responses
+            WHERE definition_item_id = NEW.id
+              AND response_type = 'reject'
+        )
+        THEN RAISE(ABORT, 'A rejected definition item needs a rejection response')
+    END;
+
+    SELECT CASE
+        WHEN NEW.status = 'incorporated' AND NOT EXISTS (
+            SELECT 1
+            FROM specs
+            JOIN spec_revisions
+              ON spec_revisions.id = NEW.incorporated_in_revision_id
+            WHERE specs.id = NEW.spec_id
+              AND specs.current_revision_id = NEW.incorporated_in_revision_id
+              AND spec_revisions.spec_id = NEW.spec_id
+              AND spec_revisions.revision_number > NEW.accepted_revision_number
+        )
+        THEN RAISE(
+            ABORT,
+            'An incorporated definition item needs a new current revision of its spec'
+        )
+    END;
+END;
+
+CREATE TRIGGER definition_items_capture_accepted_revision
+AFTER UPDATE OF status ON definition_items
+FOR EACH ROW
+WHEN NEW.status = 'accepted' AND NEW.status <> OLD.status
+BEGIN
+    UPDATE definition_items
+    SET accepted_revision_number = COALESCE(
+        (
+            SELECT spec_revisions.revision_number
+            FROM specs
+            JOIN spec_revisions ON spec_revisions.id = specs.current_revision_id
+            WHERE specs.id = NEW.spec_id
+        ),
+        0
+    )
+    WHERE id = NEW.id;
+END;
+
+CREATE TRIGGER definition_items_validate_accepted_revision_number
+BEFORE UPDATE OF accepted_revision_number ON definition_items
+FOR EACH ROW
+BEGIN
+    SELECT CASE
+        WHEN NEW.status = 'incorporated'
+        THEN RAISE(ABORT, 'An incorporated definition item cannot change its accepted revision')
+    END;
+
+    SELECT CASE
+        WHEN NEW.accepted_revision_number <> COALESCE(
+            (
+                SELECT spec_revisions.revision_number
+                FROM specs
+                JOIN spec_revisions ON spec_revisions.id = specs.current_revision_id
+                WHERE specs.id = NEW.spec_id
+            ),
+            0
+        )
+        THEN RAISE(ABORT, 'An accepted revision number must match the current spec revision')
+    END;
+END;
+
+CREATE TRIGGER definition_items_touch_updated_at
+AFTER UPDATE OF type, source, title, description, question, suggested_resolution,
+                example_type, fingerprint, status, accepted_revision_number,
+                incorporated_in_revision_id ON definition_items
+FOR EACH ROW
+BEGIN
+    UPDATE definition_items SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
+END;
+
+CREATE TRIGGER definition_responses_prevent_changes_after_incorporation
+BEFORE INSERT ON definition_responses
+FOR EACH ROW
+WHEN EXISTS (
+    SELECT 1
+    FROM definition_items
+    WHERE id = NEW.definition_item_id
+      AND status = 'incorporated'
+)
+BEGIN
+    SELECT RAISE(ABORT, 'Cannot add a response to an incorporated definition item');
 END;
 
 CREATE TRIGGER tasks_touch_updated_at
@@ -374,6 +647,20 @@ BEGIN
     END;
 END;
 """
+
+
+def is_spec_defined(connection: sqlite3.Connection, spec_id: int) -> bool:
+    """Return whether a persisted spec has no pending definition items.
+
+    The database view owns the predicate so callers do not need to duplicate
+    the definition-status rule in a CLI, dashboard, or workflow agent.
+    """
+    row = connection.execute(
+        "SELECT definition_status FROM spec_definition_states WHERE spec_id = ?", (spec_id,)
+    ).fetchone()
+    if row is None:
+        raise ValueError(f"Unknown spec id: {spec_id}")
+    return row[0] == "defined"
 
 
 def resolve_output_path(destination: Path) -> Path:
