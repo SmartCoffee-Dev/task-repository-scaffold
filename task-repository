@@ -3,24 +3,46 @@
 
 from __future__ import annotations
 
+import subprocess
 import sys
 from pathlib import Path
+
+
+SCRIPTS_DIR = Path(__file__).resolve().parent / "scripts"
+sys.path.insert(0, str(SCRIPTS_DIR))
 
 
 def main(arguments: list[str] | None = None) -> int:
     arguments = list(sys.argv[1:] if arguments is None else arguments)
     if not arguments:
-        print("usage: task-repository dashboard [--db PATH] [--port PORT]", file=sys.stderr)
-        return 2
-    if arguments[0] != "dashboard":
-        print(f"error: unknown command: {arguments[0]}", file=sys.stderr)
+        print(
+            "usage: task-repository <command> [<args>]\n"
+            "\n"
+            "Available commands:\n"
+            "  dashboard      Start the local feature-definition web dashboard\n"
+            "  scaffold-db    Create the SQLite database for feature tracking\n"
+            "  link-commands  Create or remove symlinks for agentic command files",
+            file=sys.stderr,
+        )
         return 2
 
-    scripts_directory = Path(__file__).resolve().parent / "scripts"
-    sys.path.insert(0, str(scripts_directory))
-    from dashboard import main as dashboard_main
+    command = arguments[0]
+    rest = arguments[1:]
 
-    return dashboard_main(arguments[1:])
+    if command == "dashboard":
+        from dashboard import main as dashboard_main
+        return dashboard_main(rest)
+
+    if command == "scaffold-db":
+        from scaffold_db import main as scaffold_main
+        return scaffold_main(rest)
+
+    if command == "link-commands":
+        script = SCRIPTS_DIR / "link-commands.sh"
+        return subprocess.run([str(script), *rest]).returncode
+
+    print(f"error: unknown command: {command}", file=sys.stderr)
+    return 2
 
 
 if __name__ == "__main__":
