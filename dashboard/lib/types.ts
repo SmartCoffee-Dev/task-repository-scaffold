@@ -1,18 +1,20 @@
-export type DefinitionItemType = "clarification" | "tension" | "impact" | "example";
+import type {
+  DefinitionItemType,
+  DefinitionItemSource,
+  DefinitionItemStatus,
+  ExampleType,
+  ResponseType,
+  TaskStatus,
+} from "./types";
 
-export type DefinitionItemSource = "description" | "spec" | "base_branch";
-
-export type DefinitionItemStatus =
-  | "pending"
-  | "accepted"
-  | "rejected"
-  | "incorporated";
-
-export type ExampleType = "happy-path" | "edge-case";
-
-export type ResponseType = "answer" | "accept" | "reject" | "observation";
-
-export type TaskStatus = "blocked" | "pending" | "wip" | "in_review" | "done";
+export type {
+  DefinitionItemType,
+  DefinitionItemSource,
+  DefinitionItemStatus,
+  ExampleType,
+  ResponseType,
+  TaskStatus,
+};
 
 export interface Spec {
   id: number;
@@ -94,4 +96,25 @@ export interface SpecWithCounts extends Spec {
   totalItems: number;
   pendingTasks: number;
   totalTasks: number;
+}
+
+export interface SpecDetail extends Spec {
+  currentRevision: SpecRevision | null;
+  definitionItems: DefinitionItemWithResponses[];
+}
+
+export interface SpecListFilters {
+  type?: DefinitionItemType;
+  source?: DefinitionItemSource;
+}
+
+export interface DefinitionItemFilters {
+  type?: DefinitionItemType;
+  source?: DefinitionItemSource;
+  status?: DefinitionItemStatus;
+}
+
+export interface DefinitionStatusRow {
+  spec_id: number;
+  definition_status: "draft" | "defined";
 }
