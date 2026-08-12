@@ -1,1 +1,3 @@
 feature_workflow.sqlite3
+dashboard/node_modules
+dashboard/.next
