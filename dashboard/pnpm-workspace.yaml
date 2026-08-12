@@ -1,3 +1,4 @@
+packages: []
 allowBuilds:
   '@heroui/shared-utils': true
   '@prisma/client': true
@@ -5,3 +6,10 @@ allowBuilds:
   esbuild: true
   prisma: true
   sharp: true
+onlyBuiltDependencies:
+  - '@heroui/shared-utils'
+  - '@prisma/client'
+  - '@prisma/engines'
+  - esbuild
+  - prisma
+  - sharp
