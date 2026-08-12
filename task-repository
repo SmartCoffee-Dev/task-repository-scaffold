@@ -3,13 +3,96 @@
 
 from __future__ import annotations
 
+import os
+import shutil
+import signal
 import subprocess
 import sys
 from pathlib import Path
 
 
 SCRIPTS_DIR = Path(__file__).resolve().parent / "scripts"
+DASHBOARD_DIR = Path(__file__).resolve().parent / "dashboard"
 sys.path.insert(0, str(SCRIPTS_DIR))
+
+
+def _start_dashboard(arguments: list[str]) -> int:
+    port = "8000"
+    db_url = None
+
+    args_iter = iter(arguments)
+    for arg in args_iter:
+        if arg == "--port":
+            try:
+                port = str(int(next(args_iter)))
+            except (StopIteration, ValueError):
+                print("error: --port requires a numeric value", file=sys.stderr)
+                return 2
+        elif arg == "--db":
+            try:
+                db_path = Path(next(args_iter)).resolve()
+                db_url = f"file:{db_path}"
+            except StopIteration:
+                print("error: --db requires a path value", file=sys.stderr)
+                return 2
+        else:
+            print(f"error: unknown option: {arg}", file=sys.stderr)
+            return 2
+
+    if not DASHBOARD_DIR.is_dir():
+        print(
+            "error: dashboard directory not found. "
+            "Run `task-repository scaffold-db` first?",
+            file=sys.stderr,
+        )
+        return 1
+
+    pnpm = shutil.which("pnpm")
+    if pnpm is None:
+        pnpm = shutil.which("npm")
+    if pnpm is None:
+        print(
+            "error: neither pnpm nor npm found in PATH. "
+            "Install Node.js and pnpm to run the dashboard.",
+            file=sys.stderr,
+        )
+        return 1
+
+    env = os.environ.copy()
+    env["PORT"] = port
+    if db_url is not None:
+        env["DATABASE_URL"] = db_url
+
+    try:
+        process = subprocess.Popen(
+            [pnpm, "dev"],
+            cwd=str(DASHBOARD_DIR),
+            env=env,
+            stdin=subprocess.DEVNULL,
+        )
+    except OSError as exc:
+        print(f"error: failed to start dashboard: {exc}", file=sys.stderr)
+        return 1
+
+    print(f"Dashboard iniciado en http://localhost:{port}")
+
+    def _handle_signal(signum: int, _frame: object) -> None:
+        print("\nDeteniendo dashboard...")
+        process.terminate()
+        try:
+            process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait()
+
+    original_sigint = signal.signal(signal.SIGINT, _handle_signal)
+    original_sigterm = signal.signal(signal.SIGTERM, _handle_signal)
+
+    try:
+        return process.wait()
+    finally:
+        signal.signal(signal.SIGINT, original_sigint)
+        signal.signal(signal.SIGTERM, original_sigterm)
 
 
 def main(arguments: list[str] | None = None) -> int:
@@ -30,8 +113,7 @@ def main(arguments: list[str] | None = None) -> int:
     rest = arguments[1:]
 
     if command == "dashboard":
-        from dashboard import main as dashboard_main
-        return dashboard_main(rest)
+        return _start_dashboard(rest)
 
     if command == "scaffold-db":
         from scaffold_db import main as scaffold_main
