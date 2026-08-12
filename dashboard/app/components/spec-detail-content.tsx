@@ -98,7 +98,7 @@ export function SpecDetailContent({
         href="/"
         style={{
           fontSize: "0.85rem",
-          color: "#2563eb",
+          color: "var(--color-link)",
           textDecoration: "none",
           marginBottom: "16px",
           display: "inline-block",
@@ -115,8 +115,8 @@ export function SpecDetailContent({
             marginBottom: "16px",
             fontSize: "0.9rem",
             fontWeight: 500,
-            background: message.startsWith("success:") ? "#dcfce7" : "#fee2e2",
-            color: message.startsWith("success:") ? "#166534" : "#991b1b",
+            background: message.startsWith("success:") ? "var(--color-success-bg)" : "var(--color-error-bg)",
+            color: message.startsWith("success:") ? "var(--color-success-text)" : "var(--color-error-text)",
           }}
         >
           {message.replace(/^(success|error):/, "")}
@@ -143,7 +143,7 @@ export function SpecDetailContent({
         </Badge>
       </div>
 
-      <div style={{ fontSize: "0.85rem", color: "#71717a", marginBottom: "20px" }}>
+      <div style={{ fontSize: "0.85rem", color: "var(--color-text-dim)", marginBottom: "20px" }}>
         <span>/{spec.slug}</span>
         {spec.currentRevision && (
           <span style={{ marginLeft: "16px" }}>
@@ -160,7 +160,7 @@ export function SpecDetailContent({
           <MarkdownContent content={spec.currentRevision.content} />
         </section>
       ) : (
-        <p style={{ color: "#71717a", marginBottom: "24px" }}>
+        <p style={{ color: "var(--color-text-dim)", marginBottom: "24px" }}>
           Este spec no tiene revisiones aún.
         </p>
       )}
@@ -214,7 +214,7 @@ export function SpecDetailContent({
         </div>
 
         {sortedItems.length === 0 ? (
-          <p style={{ color: "#71717a", fontSize: "1rem" }}>
+          <p style={{ color: "var(--color-text-dim)", fontSize: "1rem" }}>
             No hay asuntos para estos filtros.
           </p>
         ) : (
@@ -223,10 +223,10 @@ export function SpecDetailContent({
               <div
                 key={item.id}
                 style={{
-                  border: "1px solid #e4e4e7",
+                  border: "1px solid var(--color-border)",
                   borderRadius: "10px",
                   padding: "16px",
-                  background: "#fafafa",
+                  background: "var(--color-surface)",
                 }}
               >
                 <div
@@ -267,7 +267,7 @@ export function SpecDetailContent({
                       <span
                         style={{
                           fontSize: "0.75rem",
-                          color: "#a1a1aa",
+                          color: "var(--color-text-muted)",
                           alignSelf: "center",
                         }}
                       >
@@ -281,7 +281,7 @@ export function SpecDetailContent({
                   <p
                     style={{
                       fontSize: "0.9rem",
-                      color: "#3f3f46",
+                      color: "var(--color-text-soft)",
                       marginBottom: "8px",
                       lineHeight: 1.5,
                     }}
@@ -294,7 +294,7 @@ export function SpecDetailContent({
                   <p
                     style={{
                       fontSize: "0.9rem",
-                      color: "#52525b",
+                      color: "var(--color-text-muted)",
                       fontStyle: "italic",
                       marginBottom: "8px",
                     }}
@@ -307,7 +307,7 @@ export function SpecDetailContent({
                   <p
                     style={{
                       fontSize: "0.85rem",
-                      color: "#3b82f6",
+                      color: "var(--color-link)",
                       marginBottom: "8px",
                     }}
                   >
@@ -321,7 +321,7 @@ export function SpecDetailContent({
                       style={{
                         cursor: "pointer",
                         fontSize: "0.85rem",
-                        color: "#52525b",
+                        color: "var(--color-text-muted)",
                       }}
                     >
                       Historial ({item.responses.length} respuesta
@@ -340,7 +340,7 @@ export function SpecDetailContent({
                           key={r.id}
                           style={{
                             padding: "8px 12px",
-                            background: "#f4f4f5",
+                            background: "var(--color-surface-hover)",
                             borderRadius: "6px",
                             fontSize: "0.85rem",
                           }}
@@ -348,7 +348,7 @@ export function SpecDetailContent({
                           <div
                             style={{
                               fontWeight: 600,
-                              color: "#52525b",
+                              color: "var(--color-text-muted)",
                               marginBottom: "2px",
                             }}
                           >

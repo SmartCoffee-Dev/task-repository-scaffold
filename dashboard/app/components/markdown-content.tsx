@@ -15,9 +15,9 @@ export function MarkdownContent({ content }: MarkdownContentProps) {
       <div
         style={{
           padding: "16px",
-          border: "1px solid #e4e4e7",
+          border: "1px solid var(--color-border)",
           borderRadius: "8px",
-          background: "#fafafa",
+          background: "var(--color-surface)",
           lineHeight: 1.7,
           fontSize: "0.95rem",
         }}
@@ -65,7 +65,7 @@ export function MarkdownContent({ content }: MarkdownContentProps) {
                 return (
                   <code
                     style={{
-                      background: "#e4e4e7",
+                      background: "var(--color-code-inline-bg)",
                       padding: "2px 6px",
                       borderRadius: "4px",
                       fontSize: "0.9em",
@@ -79,8 +79,8 @@ export function MarkdownContent({ content }: MarkdownContentProps) {
               return (
                 <pre
                   style={{
-                    background: "#27272a",
-                    color: "#fafafa",
+                    background: "var(--color-code-block-bg)",
+                    color: "var(--color-code-block-text)",
                     padding: "12px",
                     borderRadius: "6px",
                     overflow: "auto",
@@ -97,10 +97,10 @@ export function MarkdownContent({ content }: MarkdownContentProps) {
             blockquote: ({ children, ...props }) => (
               <blockquote
                 style={{
-                  borderLeft: "3px solid #a1a1aa",
+                  borderLeft: "3px solid var(--color-blockquote-border)",
                   paddingLeft: "12px",
                   margin: "8px 0",
-                  color: "#52525b",
+                  color: "var(--color-blockquote-text)",
                 }}
                 {...props}
               >
@@ -108,10 +108,10 @@ export function MarkdownContent({ content }: MarkdownContentProps) {
               </blockquote>
             ),
             hr: (props) => (
-              <hr style={{ border: "none", borderTop: "1px solid #e4e4e7", margin: "16px 0" }} {...props} />
+              <hr style={{ border: "none", borderTop: "1px solid var(--color-border)", margin: "16px 0" }} {...props} />
             ),
             a: ({ children, href, ...props }) => (
-              <a href={href} style={{ color: "#2563eb", textDecoration: "underline" }} {...props}>
+              <a href={href} style={{ color: "var(--color-link)", textDecoration: "underline" }} {...props}>
                 {children}
               </a>
             ),
@@ -126,12 +126,12 @@ export function MarkdownContent({ content }: MarkdownContentProps) {
         style={{
           marginTop: "12px",
           background: "none",
-          border: "1px solid #d4d4d8",
+          border: "1px solid var(--color-border)",
           borderRadius: "6px",
           padding: "6px 14px",
           cursor: "pointer",
           fontSize: "0.85rem",
-          color: "#52525b",
+          color: "var(--color-text-muted)",
         }}
       >
         {showRaw ? "Ocultar Markdown original" : "Ver Markdown original"}
@@ -142,8 +142,8 @@ export function MarkdownContent({ content }: MarkdownContentProps) {
           style={{
             marginTop: "12px",
             padding: "16px",
-            background: "#f4f4f5",
-            border: "1px solid #e4e4e7",
+            background: "var(--color-surface-hover)",
+            border: "1px solid var(--color-border)",
             borderRadius: "8px",
             fontSize: "0.8rem",
             overflow: "auto",

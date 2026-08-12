@@ -115,7 +115,7 @@ export function SpecsPageContent({
       </div>
 
       {specs.length === 0 ? (
-        <p style={{ color: "#71717a", fontSize: "1.1rem" }}>
+        <p style={{ color: "var(--color-text-dim)", fontSize: "1.1rem" }}>
           No hay specs que coincidan con los filtros seleccionados.
         </p>
       ) : (
@@ -142,7 +142,7 @@ export function SpecsPageContent({
                       <div
                         style={{
                           fontSize: "0.8rem",
-                          color: "#71717a",
+                          color: "var(--color-text-dim)",
                           marginTop: "2px",
                         }}
                       >
