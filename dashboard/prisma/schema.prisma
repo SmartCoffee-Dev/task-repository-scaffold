@@ -8,150 +8,180 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// TRIGGERS (managed by scaffold_db.py — not by Prisma Migrate):
-//
-// definition_items:
-//   - definition_items_capture_accepted_revision: records accepted_revision_number when status changes to accepted
-//   - definition_items_start_pending: new items default to status='pending'
-//   - definition_items_touch_updated_at: updates updated_at on modification
-//   - definition_items_validate_accepted_revision_number: accepted_revision_number must be > 0 when status is accepted
-//   - definition_items_validate_status_transition: enforces valid state transitions
-//
-// definition_responses:
-//   - definition_responses_prevent_changes_after_incorporation: blocks modifications after item is incorporated
-//
-// session_logs:
-//   - session_logs_validate_json_before_insert: validates taken_decisions and files_changed are valid JSON on insert
-//   - session_logs_validate_json_before_update: validates taken_decisions and files_changed are valid JSON on update
-//
-// spec_revisions:
-//   - spec_revisions_are_immutable: prevents updates to existing revisions
-//   - spec_revisions_become_current: updates spec's current_revision_id when revision is created
-//   - spec_revisions_require_sequential_numbers: enforces sequential revision_number per spec
-//
-// specs:
-//   - specs_prevent_clearing_current_revision: prevents setting current_revision_id to NULL
-//   - specs_touch_updated_at: updates updated_at on modification
-//   - specs_validate_current_revision_before_update: validates current_revision_id references exist
-//
-// task_dependencies:
-//   - task_dependencies_validate_before_insert: prevents self-referential and cross-spec dependencies
-//   - task_dependencies_validate_before_update: same validation on update
-//
-// tasks:
-//   - tasks_prevent_spec_change: blocks changing spec_id after creation
-//   - tasks_require_completed_dependencies: prevents advancing status beyond pending unless dependencies are done
-//   - tasks_touch_updated_at: updates updated_at on modification
-//   - tasks_validate_parent_before_insert: validates parent_id references and hierarchy rules
-//   - tasks_validate_parent_before_update: same validation on update
-//
-// VIEWS:
-//   - spec_definition_states: computed status of specs based on definition_items
-
-model definition_items {
-  id                          Int                    @id @default(autoincrement())
-  spec_id                     Int
-  type                        String
-  source                      String
-  title                       String
-  description                 String
-  question                    String?
-  suggested_resolution        String?
-  example_type                String?
-  fingerprint                 String
-  status                      String                 @default("pending")
-  accepted_revision_number    Int                    @default(0)
-  incorporated_in_revision_id Int?
-  created_at                  String                 @default("CURRENT_TIMESTAMP")
-  updated_at                  String                 @default("CURRENT_TIMESTAMP")
-  spec_revisions              spec_revisions?        @relation(fields: [incorporated_in_revision_id], references: [id], onDelete: Restrict, onUpdate: NoAction)
-  specs                       specs                  @relation(fields: [spec_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  definition_responses        definition_responses[]
-
-  @@index([spec_id, type], map: "definition_items_by_spec_and_type")
-  @@index([spec_id, status], map: "definition_items_by_spec_and_status")
-}
-
-model definition_responses {
-  id                 Int              @id @default(autoincrement())
-  definition_item_id Int
-  response_type      String
-  content            String           @default("")
-  created_at         String           @default("CURRENT_TIMESTAMP")
-  definition_items   definition_items @relation(fields: [definition_item_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
-
-  @@index([definition_item_id, created_at], map: "definition_responses_by_item_and_created_at")
-}
-
-model session_logs {
-  id              Int    @id @default(autoincrement())
-  task_id         Int
-  session_id      String
-  overview        String
-  taken_decisions String @default("[]")
-  files_changed   String @default("[]")
-  created_at      String @default("CURRENT_TIMESTAMP")
-  tasks           tasks  @relation(fields: [task_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
-
-  @@unique([task_id, session_id], map: "sqlite_autoindex_session_logs_1")
-  @@index([task_id, created_at], map: "session_logs_by_task_and_created_at")
-}
-
-model spec_revisions {
-  id                                              Int                @id @default(autoincrement())
-  spec_id                                         Int
-  revision_number                                 Int
-  content                                         String
-  created_at                                      String             @default("CURRENT_TIMESTAMP")
-  definition_items                                definition_items[]
-  specs_spec_revisions_spec_idTospecs             specs              @relation("spec_revisions_spec_idTospecs", fields: [spec_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  specs_specs_current_revision_idTospec_revisions specs[]            @relation("specs_current_revision_idTospec_revisions")
-
-  @@unique([spec_id, revision_number], map: "sqlite_autoindex_spec_revisions_1")
-  @@index([spec_id, created_at], map: "spec_revisions_by_spec_and_created_at")
-}
+// ============================================================
+// SPECS — Identidad de cada feature
+// ============================================================
 
 model specs {
-  id                                                       Int                @id @default(autoincrement())
-  title                                                    String
-  slug                                                     String             @unique(map: "sqlite_autoindex_specs_1")
-  description                                              String
-  current_revision_id                                      Int?
-  created_at                                               String             @default("CURRENT_TIMESTAMP")
-  updated_at                                               String             @default("CURRENT_TIMESTAMP")
-  definition_items                                         definition_items[]
-  spec_revisions_spec_revisions_spec_idTospecs             spec_revisions[]   @relation("spec_revisions_spec_idTospecs")
-  spec_revisions_specs_current_revision_idTospec_revisions spec_revisions?    @relation("specs_current_revision_idTospec_revisions", fields: [current_revision_id], references: [id], onDelete: Restrict, onUpdate: NoAction)
-  tasks                                                    tasks[]
+  id                 Int    @id @default(autoincrement())
+  title              String                                      /// Título no vacío de la feature
+  slug               String @unique                              /// Slug único (minúsculas, dígitos, guiones)
+  description        String                                      /// Request Markdown no vacío
+  current_revision_id Int?                                       /// FK a la revisión vigente (si existe)
+  created_at         String @default("CURRENT_TIMESTAMP")
+  updated_at         String @default("CURRENT_TIMESTAMP")
+
+  currentRevision   spec_revisions?   @relation("SpecCurrentRevision", fields: [current_revision_id], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  revisions         spec_revisions[]  @relation("SpecRevisions")
+  definitionItems   definition_items[]
+  tasks             tasks[]
 }
 
-model task_dependencies {
-  task_id                                         Int
-  required_task_id                                Int
-  tasks_task_dependencies_required_task_idTotasks tasks @relation("task_dependencies_required_task_idTotasks", fields: [required_task_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  tasks_task_dependencies_task_idTotasks          tasks @relation("task_dependencies_task_idTotasks", fields: [task_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+// ============================================================
+// SPEC_REVISIONS — Snapshots inmutables del Markdown de cada spec
+// ============================================================
 
-  @@id([task_id, required_task_id])
-  @@index([required_task_id], map: "task_dependencies_by_required_task")
+model spec_revisions {
+  id              Int    @id @default(autoincrement())
+  spec_id         Int
+  revision_number Int                                       /// Secuencial, positivo, empieza en 1
+  content         String                                    /// Markdown completo no vacío (inmutable)
+  created_at      String @default("CURRENT_TIMESTAMP")
+
+  spec                specs               @relation("SpecRevisions", fields: [spec_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  currentRevisionOf   specs[]             @relation("SpecCurrentRevision")
+  incorporatedItems   definition_items[]  @relation("IncorporatedItems")
+
+  @@unique([spec_id, revision_number])
+  @@index([spec_id, created_at])
 }
+
+// ============================================================
+// DEFINITION_ITEMS — Asuntos que requieren decisión humana
+// ============================================================
+
+model definition_items {
+  id                          Int     @id @default(autoincrement())
+  spec_id                     Int
+  type                        String                                   /// clarification | tension | impact | example
+  source                      String                                   /// description | spec | base_branch
+  title                       String                                   /// Título no vacío
+  description                 String                                   /// Contexto del asunto
+  question                    String?                                  /// Obligatoria para clarification
+  suggested_resolution        String?
+  example_type                String?                                  /// happy-path | edge-case (solo para example)
+  fingerprint                 String                                   /// Identificador estable para deduplicación
+  status                      String  @default("pending")              /// pending | accepted | rejected | incorporated
+  accepted_revision_number    Int     @default(0)
+  incorporated_in_revision_id Int?                                     /// FK a spec_revisions (solo si status = incorporated)
+  created_at                  String  @default("CURRENT_TIMESTAMP")
+  updated_at                  String  @default("CURRENT_TIMESTAMP")
+
+  spec                  specs               @relation(fields: [spec_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  incorporatedInRevision spec_revisions?     @relation("IncorporatedItems", fields: [incorporated_in_revision_id], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  responses             definition_responses[]
+
+  @@index([spec_id, type])
+  @@index([spec_id, status])
+}
+
+// ============================================================
+// DEFINITION_RESPONSES — Historial de interacciones sobre items
+// ============================================================
+
+model definition_responses {
+  id                  Int     @id @default(autoincrement())
+  definition_item_id  Int
+  response_type       String                              /// answer | accept | reject | observation
+  content             String  @default("")                /// Obligatorio para answer/observation
+  created_at          String  @default("CURRENT_TIMESTAMP")
+
+  definitionItem      definition_items @relation(fields: [definition_item_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([definition_item_id, created_at])
+}
+
+// ============================================================
+// TASKS — Actividades de implementación (árbol dentro de una spec)
+// ============================================================
 
 model tasks {
-  id                                                          Int                 @id @default(autoincrement())
-  spec_id                                                     Int
-  title                                                       String
-  description                                                 String
-  status                                                      String              @default("pending")
-  parent_id                                                   Int?
-  branch                                                      String?
-  created_at                                                  String              @default("CURRENT_TIMESTAMP")
-  updated_at                                                  String              @default("CURRENT_TIMESTAMP")
-  session_logs                                                session_logs[]
-  task_dependencies_task_dependencies_required_task_idTotasks task_dependencies[] @relation("task_dependencies_required_task_idTotasks")
-  task_dependencies_task_dependencies_task_idTotasks          task_dependencies[] @relation("task_dependencies_task_idTotasks")
-  tasks                                                       tasks?              @relation("tasksTotasks", fields: [parent_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  other_tasks                                                 tasks[]             @relation("tasksTotasks")
-  specs                                                       specs               @relation(fields: [spec_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  id            Int     @id @default(autoincrement())
+  spec_id       Int                                                 /// FK inmutable tras creación
+  title         String                                              /// Título Markdown no vacío
+  description   String                                              /// Descripción Markdown
+  status        String  @default("pending")                         /// blocked | pending | wip | in_review | done
+  parent_id     Int?                                                /// FK recursiva (misma spec)
+  branch        String?                                             /// Nombre de rama (no vacío si existe)
+  created_at    String  @default("CURRENT_TIMESTAMP")
+  updated_at    String  @default("CURRENT_TIMESTAMP")
 
-  @@index([parent_id], map: "tasks_by_parent")
-  @@index([spec_id, status], map: "tasks_by_spec_and_status")
+  spec              specs                @relation(fields: [spec_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  parent            tasks?               @relation("TaskHierarchy", fields: [parent_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  children          tasks[]              @relation("TaskHierarchy")
+  sessionLogs       session_logs[]
+  dependencies      task_dependencies[]  @relation("TaskDependencies")
+  requiredBy        task_dependencies[]  @relation("RequiredByDependencies")
+
+  @@index([spec_id, status])
+  @@index([parent_id])
 }
+
+// ============================================================
+// TASK_DEPENDENCIES — Grafo de prerrequisitos entre tareas
+// ============================================================
+
+model task_dependencies {
+  task_id          Int
+  required_task_id Int
+
+  task         tasks @relation("TaskDependencies", fields: [task_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  requiredTask tasks @relation("RequiredByDependencies", fields: [required_task_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@id([task_id, required_task_id])
+  @@index([required_task_id])
+}
+
+// ============================================================
+// SESSION_LOGS — Bitácoras de sesiones de trabajo
+// ============================================================
+
+model session_logs {
+  id               Int    @id @default(autoincrement())
+  task_id          Int
+  session_id       String                                             /// Identificador de sesión no vacío
+  overview         String                                             /// Resumen Markdown no vacío
+  taken_decisions  String @default("[]")                              /// JSON array de { decision, gap, justify }
+  files_changed    String @default("[]")                              /// JSON array de { type, file, reason }
+  created_at       String @default("CURRENT_TIMESTAMP")
+
+  task             tasks  @relation(fields: [task_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([task_id, session_id])
+  @@index([task_id, created_at])
+}
+
+// ============================================================
+// VISTA: spec_definition_states
+//
+// Prisma no soporta vistas SQLite como modelos. Esta consulta raw
+// reemplaza el modelo que no podemos generar automáticamente.
+//
+// SELECT
+//   specs.id AS spec_id,
+//   CASE
+//     WHEN EXISTS (
+//       SELECT 1 FROM definition_items
+//       WHERE definition_items.spec_id = specs.id
+//         AND definition_items.status = 'pending'
+//     ) THEN 'draft'
+//     ELSE 'defined'
+//   END AS definition_status
+// FROM specs
+//
+// Uso desde TypeScript:
+//   prisma.$queryRaw<Array<{ spec_id: number; definition_status: string }>>`
+//     SELECT ... FROM specs
+//   `
+// ============================================================
+//
+// TRIGGERS (administrados por scaffold_db.py, no por Prisma Migrate):
+// - specs: touch_updated_at, validate_current_revision, prevent_clearing_current
+// - spec_revisions: are_immutable, become_current, require_sequential
+// - definition_items: start_pending, validate_status_transition,
+//   capture_accepted_revision, validate_accepted_revision, touch_updated_at
+// - definition_responses: prevent_changes_after_incorporation
+// - tasks: touch_updated_at, prevent_spec_change, validate_parent,
+//   require_completed_dependencies
+// - task_dependencies: validate_before_insert/update
+// - session_logs: validate_json_before_insert/update

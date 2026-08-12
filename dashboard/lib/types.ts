@@ -95,3 +95,24 @@ export interface SpecWithCounts extends Spec {
   pendingTasks: number;
   totalTasks: number;
 }
+
+export interface SpecDetail extends Spec {
+  currentRevision: SpecRevision | null;
+  definitionItems: DefinitionItemWithResponses[];
+}
+
+export interface SpecListFilters {
+  type?: DefinitionItemType;
+  source?: DefinitionItemSource;
+}
+
+export interface DefinitionItemFilters {
+  type?: DefinitionItemType;
+  source?: DefinitionItemSource;
+  status?: DefinitionItemStatus;
+}
+
+export interface DefinitionStatusRow {
+  spec_id: number;
+  definition_status: "draft" | "defined";
+}
