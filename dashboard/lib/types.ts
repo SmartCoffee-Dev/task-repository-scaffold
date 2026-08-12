@@ -1,20 +1,18 @@
-import type {
-  DefinitionItemType,
-  DefinitionItemSource,
-  DefinitionItemStatus,
-  ExampleType,
-  ResponseType,
-  TaskStatus,
-} from "./types";
+export type DefinitionItemType = "clarification" | "tension" | "impact" | "example";
 
-export type {
-  DefinitionItemType,
-  DefinitionItemSource,
-  DefinitionItemStatus,
-  ExampleType,
-  ResponseType,
-  TaskStatus,
-};
+export type DefinitionItemSource = "description" | "spec" | "base_branch";
+
+export type DefinitionItemStatus =
+  | "pending"
+  | "accepted"
+  | "rejected"
+  | "incorporated";
+
+export type ExampleType = "happy-path" | "edge-case";
+
+export type ResponseType = "answer" | "accept" | "reject" | "observation";
+
+export type TaskStatus = "blocked" | "pending" | "wip" | "in_review" | "done";
 
 export interface Spec {
   id: number;
