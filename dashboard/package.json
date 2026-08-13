@@ -13,6 +13,8 @@
   },
   "dependencies": {
     "@heroui/react": "^2.7.6",
+    "@heroui/select": "^2.4.33",
+    "@heroui/theme": "^2.4.26",
     "@prisma/client": "^6.6.0",
     "framer-motion": "^12.9.2",
     "next": "^15.3.1",
