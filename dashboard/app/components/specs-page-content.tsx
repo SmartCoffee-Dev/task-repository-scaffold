@@ -168,9 +168,18 @@ export function SpecsPageContent({
                     </span>
                   </TableCell>
                   <TableCell>
-                    <span style={{ fontSize: "0.9rem" }}>
-                      {doneTasks} / {spec.totalTasks} tareas
-                    </span>
+                    {spec.totalTasks > 0 ? (
+                      <Link
+                        href={`/specs/${spec.id}/tasks`}
+                        style={{ fontSize: "0.9rem" }}
+                      >
+                        {doneTasks} / {spec.totalTasks} tareas
+                      </Link>
+                    ) : (
+                      <span style={{ fontSize: "0.9rem" }}>
+                        {doneTasks} / {spec.totalTasks} tareas
+                      </span>
+                    )}
                   </TableCell>
                 </TableRow>
               );
