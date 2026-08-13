@@ -13,11 +13,21 @@ import {
   TableCell,
   Button,
   Chip,
+  Select,
+  SelectItem,
 } from "@heroui/react";
-import type { TaskTreeNode, Spec } from "@/lib/types";
+import type {
+  TaskTreeNode,
+  DetailLevel,
+  TaskDependencyEdge,
+} from "@/lib/types";
 import { TaskDescriptionModal } from "./task-description-modal";
+import { FlowDiagram } from "./flow-diagram";
 
-const STATUS_COLOR: Record<string, "warning" | "default" | "primary" | "secondary" | "success"> = {
+const STATUS_COLOR: Record<
+  string,
+  "warning" | "default" | "primary" | "secondary" | "success"
+> = {
   blocked: "warning",
   pending: "default",
   wip: "primary",
@@ -33,14 +43,29 @@ const STATUS_LABEL: Record<string, string> = {
   done: "Completada",
 };
 
+const LEVEL_OPTIONS: { key: DetailLevel; label: string }[] = [
+  { key: "user-stories", label: "Historias de usuario" },
+  { key: "activities", label: "Actividades de segundo nivel" },
+];
+
 interface ActivitiesContentProps {
   spec: { id: number; title: string; slug: string };
   taskTree: TaskTreeNode[];
+  dependencies: TaskDependencyEdge[];
 }
 
-export function ActivitiesContent({ spec, taskTree }: ActivitiesContentProps) {
+export function ActivitiesContent({
+  spec,
+  taskTree,
+  dependencies,
+}: ActivitiesContentProps) {
   const [modalOpen, setModalOpen] = useState(false);
-  const [selectedTask, setSelectedTask] = useState<{ title: string; description: string } | null>(null);
+  const [selectedTask, setSelectedTask] = useState<{
+    title: string;
+    description: string;
+  } | null>(null);
+
+  const [detailLevel, setDetailLevel] = useState<DetailLevel>("user-stories");
 
   const openDescription = (task: { title: string; description: string }) => {
     setSelectedTask(task);
@@ -69,7 +94,7 @@ export function ActivitiesContent({ spec, taskTree }: ActivitiesContentProps) {
           display: "inline-block",
         }}
       >
-        ← Volver al detalle
+        &larr; Volver al detalle
       </a>
 
       <div
@@ -95,8 +120,9 @@ export function ActivitiesContent({ spec, taskTree }: ActivitiesContentProps) {
       >
         <span>/{spec.slug}</span>
         <span style={{ marginLeft: "16px" }}>
-          {taskTree.length} historia{taskTree.length !== 1 ? "s" : ""} de usuario,{" "}
-          {totalActivities} actividad{totalActivities !== 1 ? "es" : ""}
+          {taskTree.length} historia{taskTree.length !== 1 ? "s" : ""} de
+          usuario, {totalActivities} actividad
+          {totalActivities !== 1 ? "es" : ""}
         </span>
       </div>
 
@@ -202,11 +228,14 @@ export function ActivitiesContent({ spec, taskTree }: ActivitiesContentProps) {
                         </TableCell>
                         <TableCell>
                           <Badge
-                            color={STATUS_COLOR[activity.status] || "default"}
+                            color={
+                              STATUS_COLOR[activity.status] || "default"
+                            }
                             variant="flat"
                             size="sm"
                           >
-                            {STATUS_LABEL[activity.status] || activity.status}
+                            {STATUS_LABEL[activity.status] ||
+                              activity.status}
                           </Badge>
                         </TableCell>
                         <TableCell>
@@ -221,7 +250,7 @@ export function ActivitiesContent({ spec, taskTree }: ActivitiesContentProps) {
                                 color: "var(--color-text-dim)",
                               }}
                             >
-                              —
+                              &mdash;
                             </span>
                           )}
                         </TableCell>
@@ -233,6 +262,52 @@ export function ActivitiesContent({ spec, taskTree }: ActivitiesContentProps) {
             </AccordionItem>
           ))}
         </Accordion>
+      )}
+
+      {taskTree.length > 0 && (
+        <>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "12px",
+              marginTop: "28px",
+              marginBottom: "8px",
+            }}
+          >
+            <h2
+              style={{ fontSize: "1.2rem", fontWeight: 600, margin: 0 }}
+            >
+              Diagrama de flujo
+            </h2>
+            <Select
+              aria-label="Nivel de detalle del diagrama"
+              label="Nivel de detalle"
+              selectedKeys={[detailLevel]}
+              onSelectionChange={(keys) => {
+                const selected = Array.from(keys)[0] as
+                  | DetailLevel
+                  | undefined;
+                if (
+                  selected === "user-stories" ||
+                  selected === "activities"
+                ) {
+                  setDetailLevel(selected);
+                }
+              }}
+              style={{ minWidth: 240 }}
+            >
+              {LEVEL_OPTIONS.map((opt) => (
+                <SelectItem key={opt.key}>{opt.label}</SelectItem>
+              ))}
+            </Select>
+          </div>
+          <FlowDiagram
+            tasks={taskTree}
+            dependencies={dependencies}
+            detailLevel={detailLevel}
+          />
+        </>
       )}
 
       {selectedTask && (
