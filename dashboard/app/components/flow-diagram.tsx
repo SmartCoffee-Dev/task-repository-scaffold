@@ -7,9 +7,12 @@ import {
   Controls,
   BackgroundVariant,
   MarkerType,
+  Handle,
+  Position,
   type Node,
   type Edge,
   type NodeProps,
+  type DefaultEdgeOptions,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { CircularProgress, Button } from "@heroui/react";
@@ -50,8 +53,19 @@ function CustomNode({ data }: NodeProps<FlowNode>) {
         flexDirection: "column",
         gap: "8px",
         boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
+        position: "relative",
       }}
     >
+      <Handle
+        type="target"
+        position={Position.Left}
+        style={{ background: "hsl(220 10% 55%)", width: 8, height: 8 }}
+      />
+      <Handle
+        type="source"
+        position={Position.Right}
+        style={{ background: "hsl(220 10% 55%)", width: 8, height: 8 }}
+      />
       <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
         <CircularProgress
           aria-label={`Progreso de ${data.title}`}
@@ -94,16 +108,19 @@ function CustomNode({ data }: NodeProps<FlowNode>) {
 
 const nodeTypes = { custom: CustomNode };
 
+const defaultEdgeOptions: DefaultEdgeOptions = {
+  style: { stroke: "hsl(220 10% 45%)", strokeWidth: 2 },
+  markerEnd: {
+    type: MarkerType.ArrowClosed,
+    color: "hsl(220 10% 45%)",
+  },
+};
+
 interface FlowDiagramProps {
   tasks: TaskTreeNode[];
   dependencies: TaskDependencyEdge[];
   detailLevel: DetailLevel;
 }
-
-const EDGE_STYLE = {
-  stroke: "hsl(220 10% 45%)",
-  strokeWidth: 2,
-};
 
 export function FlowDiagram({
   tasks,
@@ -133,11 +150,6 @@ export function FlowDiagram({
       id: `${prefix}-${sourceId}-${targetId}`,
       source: String(sourceId),
       target: String(targetId),
-      style: EDGE_STYLE,
-      markerEnd: {
-        type: MarkerType.ArrowClosed,
-        color: "hsl(220 10% 45%)",
-      },
     });
 
     const buildNodes = (
@@ -272,7 +284,9 @@ export function FlowDiagram({
           nodes={nodes}
           edges={edges}
           nodeTypes={nodeTypes}
+          defaultEdgeOptions={defaultEdgeOptions}
           fitView
+          fitViewOptions={{ padding: 0.3 }}
           nodesDraggable={false}
           nodesConnectable={false}
         >
