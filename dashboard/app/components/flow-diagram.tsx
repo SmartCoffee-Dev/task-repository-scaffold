@@ -100,6 +100,11 @@ interface FlowDiagramProps {
   detailLevel: DetailLevel;
 }
 
+const EDGE_STYLE = {
+  stroke: "hsl(220 10% 45%)",
+  strokeWidth: 2,
+};
+
 export function FlowDiagram({
   tasks,
   dependencies,
@@ -120,6 +125,21 @@ export function FlowDiagram({
   const closeDescription = useCallback(() => setSelectedTask(null), []);
 
   const { nodes, edges } = useMemo(() => {
+    const toEdge = (
+      sourceId: number,
+      targetId: number,
+      prefix: string
+    ): Edge => ({
+      id: `${prefix}-${sourceId}-${targetId}`,
+      source: String(sourceId),
+      target: String(targetId),
+      style: EDGE_STYLE,
+      markerEnd: {
+        type: MarkerType.ArrowClosed,
+        color: "hsl(220 10% 45%)",
+      },
+    });
+
     const buildNodes = (
       items: TaskTreeNode[],
       computeIndex: (t: TaskTreeNode) => number
@@ -137,30 +157,24 @@ export function FlowDiagram({
         },
       }));
 
-    const buildEdges = (
-      visibleIds: Set<number>
-    ): Edge[] =>
-      dependencies
-        .filter(
-          (d) =>
-            visibleIds.has(d.taskId) && visibleIds.has(d.requiredTaskId)
-        )
-        .map((d) => ({
-          id: `e-${d.requiredTaskId}-${d.taskId}`,
-          source: String(d.requiredTaskId),
-          target: String(d.taskId),
-          markerEnd: { type: MarkerType.ArrowClosed },
-        }));
-
     if (detailLevel === "user-stories") {
       const rootIds = new Set(tasks.map((t) => t.id));
+
+      const directEdges = dependencies
+        .filter(
+          (d) =>
+            rootIds.has(d.taskId) && rootIds.has(d.requiredTaskId)
+        )
+        .map((d) => toEdge(d.requiredTaskId, d.taskId, "e"));
+
       return {
         nodes: buildNodes(tasks, (t) => t.id),
-        edges: buildEdges(rootIds),
+        edges: directEdges,
       };
     }
 
     const activities = tasks.flatMap((t) => t.children);
+    const rootIds = new Set(tasks.map((t) => t.id));
 
     const byParent = new Map<number, TaskTreeNode[]>();
     for (const activity of activities) {
@@ -192,9 +206,40 @@ export function FlowDiagram({
 
     const activityIds = new Set(activities.map((a) => a.id));
 
+    const directEdges = dependencies
+      .filter(
+        (d) =>
+          activityIds.has(d.taskId) &&
+          activityIds.has(d.requiredTaskId)
+      )
+      .map((d) => toEdge(d.requiredTaskId, d.taskId, "e"));
+
+    const propagatedEdges = dependencies
+      .filter(
+        (d) =>
+          rootIds.has(d.taskId) &&
+          rootIds.has(d.requiredTaskId) &&
+          !activityIds.has(d.taskId) &&
+          !activityIds.has(d.requiredTaskId)
+      )
+      .flatMap((d) => {
+        const srcGroup = byParent.get(d.requiredTaskId);
+        const tgtGroup = byParent.get(d.taskId);
+        if (!srcGroup || srcGroup.length === 0 || !tgtGroup || tgtGroup.length === 0) {
+          return [];
+        }
+        return [
+          toEdge(
+            srcGroup[srcGroup.length - 1].id,
+            tgtGroup[0].id,
+            "pe"
+          ),
+        ];
+      });
+
     return {
       nodes: nodesList,
-      edges: buildEdges(activityIds),
+      edges: [...directEdges, ...propagatedEdges],
     };
   }, [tasks, dependencies, detailLevel, openDescription]);
 
@@ -230,7 +275,6 @@ export function FlowDiagram({
           fitView
           nodesDraggable={false}
           nodesConnectable={false}
-          elementsSelectable
         >
           <Background variant={BackgroundVariant.Dots} gap={16} size={1} />
           <Controls />
