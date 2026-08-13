@@ -21,6 +21,26 @@
   --color-code-inline-bg: #E4E4E7;
   --color-code-block-bg: #27272A;
   --color-code-block-text: #FAFAFA;
+  --flow-color-0: hsl(0, 50%, 85%);
+  --flow-color-1: hsl(18, 50%, 85%);
+  --flow-color-2: hsl(36, 50%, 85%);
+  --flow-color-3: hsl(54, 50%, 85%);
+  --flow-color-4: hsl(72, 50%, 85%);
+  --flow-color-5: hsl(90, 50%, 85%);
+  --flow-color-6: hsl(108, 50%, 85%);
+  --flow-color-7: hsl(126, 50%, 85%);
+  --flow-color-8: hsl(144, 50%, 85%);
+  --flow-color-9: hsl(162, 50%, 85%);
+  --flow-color-10: hsl(180, 50%, 85%);
+  --flow-color-11: hsl(198, 50%, 85%);
+  --flow-color-12: hsl(216, 50%, 85%);
+  --flow-color-13: hsl(234, 50%, 85%);
+  --flow-color-14: hsl(252, 50%, 85%);
+  --flow-color-15: hsl(270, 50%, 85%);
+  --flow-color-16: hsl(288, 50%, 85%);
+  --flow-color-17: hsl(306, 50%, 85%);
+  --flow-color-18: hsl(324, 50%, 85%);
+  --flow-color-19: hsl(342, 50%, 85%);
 }
 
 .dark {
@@ -42,6 +62,26 @@
   --color-code-inline-bg: #3F3F46;
   --color-code-block-bg: #09090B;
   --color-code-block-text: #E4E4E7;
+  --flow-color-0: hsl(0, 30%, 25%);
+  --flow-color-1: hsl(18, 30%, 25%);
+  --flow-color-2: hsl(36, 30%, 25%);
+  --flow-color-3: hsl(54, 30%, 25%);
+  --flow-color-4: hsl(72, 30%, 25%);
+  --flow-color-5: hsl(90, 30%, 25%);
+  --flow-color-6: hsl(108, 30%, 25%);
+  --flow-color-7: hsl(126, 30%, 25%);
+  --flow-color-8: hsl(144, 30%, 25%);
+  --flow-color-9: hsl(162, 30%, 25%);
+  --flow-color-10: hsl(180, 30%, 25%);
+  --flow-color-11: hsl(198, 30%, 25%);
+  --flow-color-12: hsl(216, 30%, 25%);
+  --flow-color-13: hsl(234, 30%, 25%);
+  --flow-color-14: hsl(252, 30%, 25%);
+  --flow-color-15: hsl(270, 30%, 25%);
+  --flow-color-16: hsl(288, 30%, 25%);
+  --flow-color-17: hsl(306, 30%, 25%);
+  --flow-color-18: hsl(324, 30%, 25%);
+  --flow-color-19: hsl(342, 30%, 25%);
 }
 
 body {

@@ -25,6 +25,13 @@ export default async function TasksPage({
 
   const taskRepo = new TaskRepository(prisma);
   const taskTree = await taskRepo.findTasksBySpecId(specId);
+  const dependencies = await taskRepo.findDependenciesBySpecId(specId);
 
-  return <ActivitiesContent spec={spec} taskTree={taskTree} />;
+  return (
+    <ActivitiesContent
+      spec={spec}
+      taskTree={taskTree}
+      dependencies={dependencies}
+    />
+  );
 }
