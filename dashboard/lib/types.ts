@@ -75,6 +75,23 @@ export interface TaskDependency {
   requiredTaskId: number;
 }
 
+export type DetailLevel = "user-stories" | "activities";
+
+export interface TaskProgress {
+  done: number;
+  total: number;
+}
+
+export interface TaskDependencyEdge {
+  taskId: number;
+  requiredTaskId: number;
+}
+
+export interface TaskTreeNode extends Task {
+  children: TaskTreeNode[];
+  progress: TaskProgress;
+}
+
 export interface SessionLog {
   id: number;
   taskId: number;
